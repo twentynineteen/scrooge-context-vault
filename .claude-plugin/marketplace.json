@@ -1,0 +1,11 @@
+{
+  "name": "money-bin",
+  "owner": { "name": "Daniel Mills" },
+  "plugins": [
+    {
+      "name": "money-bin",
+      "source": "./",
+      "description": "Context window monitor drawn as Scrooge McDuck's Money Bin: coins fill it as context fills, and at 80% Scrooge dives in for a swim"
+    }
+  ]
+}
