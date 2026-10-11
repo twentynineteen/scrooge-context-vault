@@ -1,11 +1,13 @@
 {
-  "name": "money-bin",
-  "owner": { "name": "Daniel Mills" },
+  "name": "scrooge-context-vault",
+  "owner": {
+    "name": "Daniel Mills"
+  },
   "plugins": [
     {
-      "name": "money-bin",
+      "name": "scrooge-context-vault",
       "source": "./",
-      "description": "Context window monitor drawn as Scrooge McDuck's Money Bin: coins fill it as context fills, and at 80% Scrooge dives in for a swim"
+      "description": "Context window monitor drawn as Scrooge McDuck's Money Bin: coins fill the vault as context fills, and at a set percentage (80% by default) Scrooge dives in for a swim"
     }
   ]
 }

@@ -3,6 +3,6 @@ export type Pixels = 'small' | 'big'
 
 declare module 'claude-code' {
   interface PluginState {
-    'money-bin': { fill: Fill; pixels: Pixels }
+    'scrooge-context-vault': { fill: Fill; pixels: Pixels }
   }
 }

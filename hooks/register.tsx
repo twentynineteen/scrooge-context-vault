@@ -7,7 +7,7 @@ import type { Fill, Pixels } from '../types'
 // the context fills; at diveAt percent Scrooge jumps off his diving board,
 // dives in and swims until the context is cleared or compacted.
 
-const PANE = 'money-bin'
+const PANE = 'scrooge-context-vault'
 const RASTER = 'bin'
 // The percentage at which Scrooge dives in: the `diveAt` setting, read from
 // the plugin's options on each load (a change in /config reloads the module).
@@ -19,8 +19,8 @@ const TICK_MS = 100
 const CAPACITY = 0.45
 
 const EMPTY: Fill = { percent: 0, tokens: null, window: 0 }
-const fill = atom({ plugin: 'money-bin', key: 'fill' } as const, EMPTY)
-const pixels = atom({ plugin: 'money-bin', key: 'pixels' } as const, 'small' as Pixels)
+const fill = atom({ plugin: 'scrooge-context-vault', key: 'fill' } as const, EMPTY)
+const pixels = atom({ plugin: 'scrooge-context-vault', key: 'pixels' } as const, 'small' as Pixels)
 
 // Colours, 0x00RRGGBB.
 const STEEL = 0x5a6270
@@ -186,7 +186,7 @@ const svgMemory: {
   swimSince: number | null
   scene: { text: string; source: string; alt: string } | null
 } = { percent: 0, hasDived: false, swimSince: null, scene: null }
-// A fill set by `/money-bin demo`, held over the real figures until turned
+// A fill set by `/scrooge-context-vault demo`, held over the real figures until turned
 // off or the bin is drained by /clear or /compact.
 let demo: number | null = null
 
@@ -198,7 +198,7 @@ async function setFill($: EngineInterface, value: Fill) {
   if (before.percent < diveAt && value.percent >= diveAt) {
     $.ui.toast(`Context at ${value.percent}%: Scrooge is diving into the Money Bin!`)
   } else if (before.percent >= diveAt && value.percent < diveAt) {
-    $.ui.toast('Money Bin drained. Scrooge climbs out.')
+    $.ui.toast('Vault drained. Scrooge climbs out.')
   }
 }
 
@@ -224,8 +224,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'money-bin',
-      description: "Show Scrooge McDuck's Money Bin, filling with your context window",
+      name: 'scrooge-context-vault',
+      description: "Show Scrooge's Context Vault, filling with coins as your context window fills",
       argumentHint: '[demo [percent] | demo off | pixels small|big]',
       immediate: true,
     })
@@ -250,20 +250,20 @@ export const register: Register = (on, options) => {
     // The terminal shows the bin in a pane; the apps show it above the
     // message box instead (the AbovePrompt band), where a pane would dock.
     if (!(await isInApp($))) {
-      void $.ui.open({ id: PANE, title: 'Money Bin' })
+      void $.ui.open({ id: PANE, title: "Scrooge's Context Vault" })
     }
 
     return next(e)
   })
 
-  on('command.run', { command: 'money-bin' }, async ($, e) => {
-    const opened = (await isInApp($)) ? null : await $.ui.open({ id: PANE, title: 'Money Bin' })
+  on('command.run', { command: 'scrooge-context-vault' }, async ($, e) => {
+    const opened = (await isInApp($)) ? null : await $.ui.open({ id: PANE, title: "Scrooge's Context Vault" })
     const [word, value] = e.args.trim().split(/\s+/)
 
     if (word === 'pixels' && (value === 'small' || value === 'big')) {
       await update($, pixels, () => value)
 
-      return { text: `Money Bin pixels: ${value}.` }
+      return { text: `Context Vault pixels: ${value}.` }
     }
 
     if (word === 'demo' && value === 'off') {
@@ -271,7 +271,7 @@ export const register: Register = (on, options) => {
       const { context } = await $.session.usage()
       await setFill($, fromUsage(context))
 
-      return { text: 'Money Bin demo off: back to the real context window.' }
+      return { text: 'Context Vault demo off: back to the real context window.' }
     }
 
     if (word === 'demo') {
@@ -280,14 +280,14 @@ export const register: Register = (on, options) => {
       const { window } = await read($, fill)
       await setFill($, { percent, tokens: Math.round((percent / 100) * window), window })
 
-      return { text: `Money Bin demo: ${percent}%. /money-bin demo off, /clear or /compact to stop.` }
+      return { text: `Context Vault demo: ${percent}%. /scrooge-context-vault demo off, /clear or /compact to stop.` }
     }
 
     if (opened === null) {
-      return { text: 'The Money Bin is above the message box.' }
+      return { text: 'The Context Vault is above the message box.' }
     }
 
-    return { text: opened.isPlaced ? 'Money Bin opened.' : 'Money Bin is waiting for room on screen.' }
+    return { text: opened.isPlaced ? 'Context Vault opened.' : 'Context Vault is waiting for room on screen.' }
   })
 
   on('session.measure', async ($, e, next) => {
@@ -456,8 +456,8 @@ function appScene(value: Fill) {
     text: label.text,
     source: svgScene(value.percent, previous, isIntro, swimAge, label),
     alt: isSwimming
-      ? `Money Bin ${value.percent}% full: Scrooge McDuck is swimming in the coins`
-      : `Money Bin ${value.percent}% full of coins`,
+      ? `Context vault ${value.percent}% full: Scrooge McDuck is swimming in the coins`
+      : `Context vault ${value.percent}% full of coins`,
   }
 
   return svgMemory.scene

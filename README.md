@@ -1,4 +1,4 @@
-# Money Bin
+# Scrooge's Context Vault
 
 A Claude Code mod that shows your context window as Scrooge McDuck's Money Bin. Coins fill the bin as the context fills. At 80% (or the percentage you set), Scrooge steps onto his diving board, dives in head first and swims through the coins until you `/compact` or `/clear`.
 
@@ -8,7 +8,7 @@ A Claude Code mod that shows your context window as Scrooge McDuck's Money Bin. 
 ## Install
 
 ```
-/plugin install money-bin --marketplace twentynineteen/money-bin
+/plugin install scrooge-context-vault --marketplace twentynineteen/scrooge-context-vault
 ```
 
 Answer `y` to add the marketplace, then pick the user scope.
@@ -17,11 +17,11 @@ Answer `y` to add the marketplace, then pick the user scope.
 
 | Command | What it does |
 | --- | --- |
-| `/money-bin` | Opens the Money Bin pane |
-| `/money-bin demo [percent]` | Fills the bin to a pretend level (85% by default) so you can watch Scrooge dive |
-| `/money-bin demo off` | Goes back to the real context window |
-| `/money-bin pixels small` | Fine quadrant-block pixels (the default) |
-| `/money-bin pixels big` | Chunky half-block pixels |
+| `/scrooge-context-vault` | Opens the vault pane |
+| `/scrooge-context-vault demo [percent]` | Fills the bin to a pretend level (85% by default) so you can watch Scrooge dive |
+| `/scrooge-context-vault demo off` | Goes back to the real context window |
+| `/scrooge-context-vault pixels small` | Fine quadrant-block pixels (the default) |
+| `/scrooge-context-vault pixels big` | Chunky half-block pixels |
 
 The pane opens by itself in a terminal at least 144 columns wide.
 
