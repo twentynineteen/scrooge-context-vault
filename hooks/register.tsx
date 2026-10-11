@@ -4,12 +4,15 @@ import type { EngineInterface, Register, SessionContextUsage } from 'claude-code
 import type { Fill, Pixels } from '../types'
 
 // Scrooge McDuck's Money Bin as a context window monitor. Coins fill the bin as
-// the context fills; at DIVE_AT percent Scrooge jumps off his diving board,
+// the context fills; at diveAt percent Scrooge jumps off his diving board,
 // dives in and swims until the context is cleared or compacted.
 
 const PANE = 'money-bin'
 const RASTER = 'bin'
-const DIVE_AT = 80
+// The percentage at which Scrooge dives in: the `diveAt` setting, read from
+// the plugin's options on each load (a change in /config reloads the module).
+const DIVE_AT_DEFAULT = 80
+let diveAt = DIVE_AT_DEFAULT
 const TICK_MS = 100
 // The share of the bin's inside that coins can fill; the rest is headroom for
 // the diving board and the jump.
@@ -176,7 +179,13 @@ let size: Size = { columns: 0, rows: 0, pixels: 'small' }
 let isMounted = false
 // What the apps' SVG last showed: the fill it rose from, and whether Scrooge
 // has already dived in, so a redraw does not replay his jump.
-const svgMemory = { percent: 0, hasDived: false }
+const svgMemory: {
+  percent: number
+  hasDived: boolean
+  // When Scrooge's swim began (ms), so a new SVG carries his lap on.
+  swimSince: number | null
+  scene: { text: string; source: string; alt: string } | null
+} = { percent: 0, hasDived: false, swimSince: null, scene: null }
 // A fill set by `/money-bin demo`, held over the real figures until turned
 // off or the bin is drained by /clear or /compact.
 let demo: number | null = null
@@ -186,9 +195,9 @@ async function setFill($: EngineInterface, value: Fill) {
   await update($, fill, () => value)
   scene.target = value.percent / 100
 
-  if (before.percent < DIVE_AT && value.percent >= DIVE_AT) {
+  if (before.percent < diveAt && value.percent >= diveAt) {
     $.ui.toast(`Context at ${value.percent}%: Scrooge is diving into the Money Bin!`)
-  } else if (before.percent >= DIVE_AT && value.percent < DIVE_AT) {
+  } else if (before.percent >= diveAt && value.percent < diveAt) {
     $.ui.toast('Money Bin drained. Scrooge climbs out.')
   }
 }
@@ -200,11 +209,19 @@ async function drain($: EngineInterface) {
   await setFill($, { ...EMPTY, window })
 }
 
+// Holds the setting to a whole percentage from 1 to 100.
+function toDiveAt(value: unknown): number {
+  const number = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(number) ? Math.min(100, Math.max(1, Math.round(number))) : DIVE_AT_DEFAULT
+}
+
 function fromUsage(context: SessionContextUsage): Fill {
   return { percent: context.percent ?? 0, tokens: context.tokens ?? null, window: context.window }
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  diveAt = toDiveAt(options.diveAt)
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'money-bin',
@@ -230,13 +247,17 @@ export const register: Register = on => {
           if ('deny' in result && result.deny) isMounted = false
         })
     })
-    void $.ui.open({ id: PANE, title: 'Money Bin' })
+    // The terminal shows the bin in a pane; the apps show it above the
+    // message box instead (the AbovePrompt band), where a pane would dock.
+    if (!(await isInApp($))) {
+      void $.ui.open({ id: PANE, title: 'Money Bin' })
+    }
 
     return next(e)
   })
 
   on('command.run', { command: 'money-bin' }, async ($, e) => {
-    const opened = await $.ui.open({ id: PANE, title: 'Money Bin' })
+    const opened = (await isInApp($)) ? null : await $.ui.open({ id: PANE, title: 'Money Bin' })
     const [word, value] = e.args.trim().split(/\s+/)
 
     if (word === 'pixels' && (value === 'small' || value === 'big')) {
@@ -260,6 +281,10 @@ export const register: Register = on => {
       await setFill($, { percent, tokens: Math.round((percent / 100) * window), window })
 
       return { text: `Money Bin demo: ${percent}%. /money-bin demo off, /clear or /compact to stop.` }
+    }
+
+    if (opened === null) {
+      return { text: 'The Money Bin is above the message box.' }
     }
 
     return { text: opened.isPlaced ? 'Money Bin opened.' : 'Money Bin is waiting for room on screen.' }
@@ -296,7 +321,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     const value = await read($, fill)
     scene.target = value.percent / 100
-    const isSwimming = value.percent >= DIVE_AT
+    const isSwimming = value.percent >= diveAt
     const caption = (
       <Text>
         <Text bold color={isSwimming ? 'red' : 'yellow'}>
@@ -315,7 +340,7 @@ export const register: Register = on => {
       </Text>
     ) : (
       <Text dimColor wrap="truncate-end">
-        Scrooge dives in at {DIVE_AT}%.
+        Scrooge dives in at {diveAt}%.
       </Text>
     )
 
@@ -323,17 +348,11 @@ export const register: Register = on => {
       // The apps draw no cells: the bin goes as an SVG that animates itself,
       // redrawn only when the fill moves.
       const { Svg } = $.ui.resolve(e)
-      const previous = svgMemory.percent
-      const isIntro = isSwimming && !svgMemory.hasDived
-      svgMemory.percent = value.percent
-      svgMemory.hasDived = isSwimming
-      const alt = isSwimming
-        ? `Money Bin ${value.percent}% full: Scrooge McDuck is swimming in the coins`
-        : `Money Bin ${value.percent}% full of coins`
+      const { source, alt } = appScene(value)
 
       return (
         <Box flexDirection="column">
-          <Svg source={svgScene(value.percent, previous, isIntro)} alt={alt} isInteractive />
+          <Svg source={source} alt={alt} width={STRIP_WIDTH} height={STRIP_HEIGHT} isInteractive />
           {caption}
           {hint}
         </Box>
@@ -367,6 +386,81 @@ export const register: Register = on => {
       </Box>
     )
   })
+
+  // An app that joins later takes the bin above its message box, so the pane
+  // the terminal opened goes: the app would dock it at the side.
+  on('session.attach', async ($, e, next) => {
+    const result = await next(e)
+    if (e.surface !== 'terminal') {
+      await $.ui.close({ id: PANE }).catch(() => undefined)
+    }
+
+    return result
+  })
+
+  // In the apps the bin sits above the message box, over whatever else draws
+  // there; the terminal keeps its pane.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface === 'terminal' || e.props.hasSurvey) {
+      return next(e)
+    }
+
+    const below = await next(e)
+    const { Box, Svg } = $.ui.resolve(e)
+    const { source, alt } = appScene(await read($, fill))
+
+    // The strip spans the band, its figures drawn inside it.
+    return (
+      <Box flexDirection="column">
+        <Svg source={source} alt={alt} width={STRIP_WIDTH} height={STRIP_HEIGHT} isInteractive />
+        {below}
+      </Box>
+    )
+  })
+}
+
+// Whether one of the apps (desktop, VS Code, mobile) draws this session. It
+// may run a terminal REPL beneath, so a terminal in the list is no sign.
+async function isInApp($: EngineInterface) {
+  return (await $.session.surfaces()).some(surface => surface !== 'terminal')
+}
+
+// The bin as the apps draw it: an SVG, and the words a reader without it gets.
+// The apps redraw the band whenever its props move (a turn starting, say), and
+// a different SVG restarts its animation, so it is built once per fill and the
+// same one handed back until the fill moves.
+function appScene(value: Fill) {
+  const figures =
+    value.tokens === null
+      ? `${value.percent}%`
+      : `${value.percent}% · ${tokens(value.tokens)} of ${tokens(value.window)}`
+  const isSwimming = value.percent >= diveAt
+  const label: Label = isSwimming
+    ? { text: `${figures} · /compact to drain`, colour: 0xff6b6b }
+    : { text: figures, colour: GOLD[0]! }
+  if (svgMemory.scene?.text === label.text) {
+    return svgMemory.scene
+  }
+  const previous = svgMemory.percent
+  const isIntro = isSwimming && !svgMemory.hasDived
+  svgMemory.percent = value.percent
+  svgMemory.hasDived = isSwimming
+  const now = Date.now()
+  if (!isSwimming) {
+    svgMemory.swimSince = null
+  } else if (isIntro || svgMemory.swimSince === null) {
+    svgMemory.swimSince = now + (isIntro ? INTRO_SECONDS * 1000 : 0)
+  }
+  const swimAge = svgMemory.swimSince === null ? 0 : Math.max(0, (now - svgMemory.swimSince) / 1000)
+  svgMemory.scene = {
+    text: label.text,
+    source: svgScene(value.percent, previous, isIntro, swimAge, label),
+    alt: isSwimming
+      ? `Money Bin ${value.percent}% full: Scrooge McDuck is swimming in the coins`
+      : `Money Bin ${value.percent}% full of coins`,
+  }
+
+  return svgMemory.scene
 }
 
 // One animation step: the coin level eases toward the context fill, coins rain
@@ -399,7 +493,7 @@ function step(scene: SceneState, size: Size) {
     }
   }
 
-  const wantsSwim = scene.target * 100 >= DIVE_AT
+  const wantsSwim = scene.target * 100 >= diveAt
   if (!wantsSwim) {
     scene.phase = 'idle'
   } else if (scene.phase === 'idle') {
@@ -488,7 +582,7 @@ function measure(size: Size): Layout {
     ux: grid.ux,
     floor,
     capacity,
-    board: Math.max(standing + 1, floor + 1 - Math.round((DIVE_AT / 100) * capacity) - 3),
+    board: Math.max(standing + 1, floor + 1 - Math.round((diveAt / 100) * capacity) - 3),
   }
 }
 
@@ -523,7 +617,7 @@ function paint(scene: SceneState, size: Size) {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) set(x, y, Math.floor(x / ux) % 7 === 3 ? SEAM : INSIDE)
   }
-  drawDollar(set, Math.floor(width / 2) - 2 * ux, 2, ux)
+  drawDollar(set, Math.floor(width / 2) - 2 * ux, 3, ux)
 
   // Scrooge goes in before the coins, so the coins cover whatever is under.
   const surface = surfaceRow(layout, scene.shown)
@@ -685,11 +779,25 @@ function distance(a: number, b: number) {
 
 // The bin as an animated SVG for the apps, in the terminal's quadrant pixels:
 // one unit across, two down, so it matches what the terminal draws.
-const SVG_SIZE: Size = { columns: 64, rows: 16, pixels: 'small' }
+// A wide, shallow strip: it spans the band above the message box and the
+// apps scale it to that width, so Scrooge gets a long pool to swim.
+const SVG_SIZE: Size = { columns: 240, rows: 14, pixels: 'small' }
+// The apps' interactive frame takes a default height (about 150 CSS pixels)
+// unless given both a width and a height, and centres the strip in it. This
+// is the strip's own shape (480 by 56 units) at a band about 750 wide; the
+// width is held to the slot where the band is narrower.
+const STRIP_WIDTH = 752
+const STRIP_HEIGHT = Math.round((STRIP_WIDTH * 56) / 480)
 const NONE = 0xffffffff
-const SWIM_SPEED = 10 // pixels a second, as the terminal's 0.5 a tick of 100ms.
+const SWIM_SPEED = 16 // pixels a second; the strip's lap is long.
 
-function svgScene(percent: number, previous: number, isIntro: boolean) {
+// The board, the jump and the splash, before the swim begins.
+const INTRO_SECONDS = 3
+
+// The figures drawn in the strip's top right corner.
+type Label = { text: string; colour: number }
+
+function svgScene(percent: number, previous: number, isIntro: boolean, swimAge: number, label: Label) {
   const size = SVG_SIZE
   const layout = measure(size)
   const { width, height, ux } = layout
@@ -713,13 +821,16 @@ function svgScene(percent: number, previous: number, isIntro: boolean) {
   const parts: string[] = [pixelPaths(empty, width)]
 
   // Scrooge sits between the bin and the coins, so the coins cover his lower half.
-  if (percent >= DIVE_AT) {
+  if (percent >= diveAt) {
     const w = swim[0][0]!.length
     const top = surface - swim[0].length + submerged
     const start = jumpEnd(width) + w / 2
     const left = ux + w / 2
     const right = width - ux - w / 2
-    const begin = isIntro ? 3 : 0
+    // A later SVG starts the lap as far in as the swim has gone, so a redraw
+    // for a new fill does not send Scrooge back to his start.
+    const begin = isIntro ? INTRO_SECONDS : 0
+    const lapBegin = isIntro ? `${INTRO_SECONDS}s` : `-${swimAge.toFixed(2)}s`
 
     if (isIntro) {
       parts.push(diveIntro(layout, standing, surface))
@@ -743,9 +854,9 @@ function svgScene(percent: number, previous: number, isIntro: boolean) {
       `<g${isIntro ? ' visibility="hidden"' : ''}>` +
         (isIntro ? `<set attributeName="visibility" to="visible" begin="${begin}s"/>` : '') +
         `<g transform="translate(${start} ${top})">` +
-        `<animateTransform attributeName="transform" type="translate" values="${start} ${top};${right} ${top};${left} ${top};${start} ${top}" keyTimes="0;${k1};${k2};1" dur="${total.toFixed(2)}s" begin="${begin}s" repeatCount="indefinite"/>` +
+        `<animateTransform attributeName="transform" type="translate" values="${start} ${top};${right} ${top};${left} ${top};${start} ${top}" keyTimes="0;${k1};${k2};1" dur="${total.toFixed(2)}s" begin="${lapBegin}" repeatCount="indefinite"/>` +
         `<g>` +
-        `<animateTransform attributeName="transform" type="scale" values="1 1;-1 1;1 1" keyTimes="0;${k1};${k2}" calcMode="discrete" dur="${total.toFixed(2)}s" begin="${begin}s" repeatCount="indefinite"/>` +
+        `<animateTransform attributeName="transform" type="scale" values="1 1;-1 1;1 1" keyTimes="0;${k1};${k2}" calcMode="discrete" dur="${total.toFixed(2)}s" begin="${lapBegin}" repeatCount="indefinite"/>` +
         `<g>${spritePaths(swim[0], -w / 2)}<animate attributeName="opacity" values="1;0" calcMode="discrete" dur="0.6s" repeatCount="indefinite"/></g>` +
         `<g opacity="0">${spritePaths(swim[1], -w / 2)}<animate attributeName="opacity" values="0;1" calcMode="discrete" dur="0.6s" repeatCount="indefinite"/></g>` +
         kicks +
@@ -780,8 +891,9 @@ function svgScene(percent: number, previous: number, isIntro: boolean) {
 
   // A few sparkles on the pile.
   if (percent > 0) {
-    for (let i = 0; i < 6; i++) {
-      const x = ux + Math.floor(((i + 0.5) / 6) * (width - 2 * ux))
+    const count = Math.max(6, Math.round(width / 40))
+    for (let i = 0; i < count; i++) {
+      const x = ux + Math.floor(((i + 0.5) / count) * (width - 2 * ux))
       parts.push(
         `<rect x="${x}" y="${surface}" width="1" height="1" fill="${hex(SPARKLE)}" opacity="0">` +
           `<animate attributeName="opacity" values="0;1;0" dur="1.6s" begin="${(i * 0.7).toFixed(1)}s" repeatCount="indefinite"/></rect>`,
@@ -789,10 +901,18 @@ function svgScene(percent: number, previous: number, isIntro: boolean) {
     }
   }
 
+  // A quadrant pixel is twice as tall as it is wide: the scene is stretched to
+  // that, the label is not. Drawn large, the apps scale it down to the band.
+  const label_ =
+    `<text x="${width - 3 * ux}" y="11" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" ` +
+    `font-size="9" font-weight="700" fill="${hex(label.colour)}" stroke="${hex(INSIDE)}" stroke-width="3" ` +
+    `paint-order="stroke" shape-rendering="auto">${escapeXml(label.text)}</text>`
+
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${size.columns * 10}" height="${size.rows * 20}" ` +
-    `viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges">` +
-    parts.join('') +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width * 4}" height="${height * 8}" ` +
+    `viewBox="0 0 ${width} ${height * 2}" shape-rendering="crispEdges">` +
+    `<g transform="scale(1 2)">${parts.join('')}</g>` +
+    label_ +
     `</svg>`
   )
 }
@@ -874,6 +994,10 @@ function spritePaths(sprite: Sprite, left: number) {
   })
 
   return [...runs].map(([key, d]) => `<path fill="${hex(PALETTE[key]!)}" d="${d.join('')}"/>`).join('')
+}
+
+function escapeXml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function hex(colour: number) {

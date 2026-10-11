@@ -39,6 +39,17 @@ test('the bin shows the context fill and Scrooge dives in at 80%', async ($, on)
   expect(await ui.find({ type: 'Text', text: /dives in at 80%/ })).toBeDefined()
 })
 
+test('the diveAt setting moves the dive', { options: { diveAt: 60 } }, async ($, on) => {
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+
+  await $.session.measure(measure(55))
+  const ui = await $.ui.mount({ plugin: 'money-bin', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: /dives in at 60%/ })).toBeDefined()
+
+  await $.session.measure(measure(65))
+  expect(await ui.find({ type: 'Text', text: /swimming in it/ })).toBeDefined()
+})
+
 test('the apps draw the bin as an animated SVG with the figures', async ($, on) => {
   on('session.measure', (_, e) => ({ changed: e.changed }))
   await $.session.measure(measure(90))
@@ -52,4 +63,51 @@ test('the apps draw the bin as an animated SVG with the figures', async ($, on) 
     expect(drawn).toContain('swimming in the coins')
     await ui.unmount()
   }
+})
+
+test('the apps show the bin above the message box, over what else draws there', async ($, on) => {
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('ui.render', { component: 'AbovePrompt' }, (b, e) => {
+    const { Text } = b.ui.resolve(e)
+
+    return <Text>session 0m 10s</Text>
+  })
+  await $.session.measure(measure(85))
+  const ui = await $.ui.mount({
+    plugin: 'money-bin',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    props: {
+      hasSurvey: false,
+      isWorking: false,
+      maxRows: 20,
+      bodyColumns: 80,
+      scroll: { offset: 0, bodyRows: 20 },
+      view: {},
+    },
+  })
+  expect(await ui.find({ type: 'Text', text: 'session 0m 10s' })).toBeDefined()
+  // The figures are drawn inside the strip, not in a row of their own.
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('85% · 170k of 200k · /compact to drain')
+  expect(drawn).toContain('swimming in the coins')
+})
+
+test('redrawing the band without a fill change keeps the same SVG, so its animation runs on', async ($, on) => {
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('ui.render', { component: 'AbovePrompt' }, (b, e) => b.ui.resolve(e).Box({}))
+  await $.session.measure(measure(85))
+  const band = {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 20,
+    bodyColumns: 80,
+    scroll: { offset: 0, bodyRows: 20 },
+    view: {},
+  }
+  const ui = await $.ui.mount({ plugin: 'money-bin', surface: 'desktop', component: 'AbovePrompt', props: band })
+  const first = JSON.stringify(await ui.drawn())
+  await ui.redraw({ ...band, isWorking: true })
+  await ui.redraw({ ...band, isWorking: false })
+  expect(JSON.stringify(await ui.drawn())).toBe(first)
 })
