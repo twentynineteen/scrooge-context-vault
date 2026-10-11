@@ -573,17 +573,12 @@ function measure(size: Size): Layout {
   const width = size.columns * grid.x
   const height = size.rows * grid.y
   const floor = height - 2
-  const capacity = Math.round((height - 2) * CAPACITY)
-  const standing = grid.sprites.standing.length
+  // The board sits as high as Scrooge fits under the lid, so the dive has a
+  // drop at any fill; a short bin holds fewer coins so they never reach it.
+  const board = grid.sprites.standing.length + 2
+  const capacity = Math.max(4, Math.min(Math.round((height - 2) * CAPACITY), floor - board - 1))
 
-  return {
-    width,
-    height,
-    ux: grid.ux,
-    floor,
-    capacity,
-    board: Math.max(standing + 1, floor + 1 - Math.round((diveAt / 100) * capacity) - 3),
-  }
+  return { width, height, ux: grid.ux, floor, capacity, board }
 }
 
 // The topmost coin row at the level `shown` (0 to 1), before the pile's bumps.

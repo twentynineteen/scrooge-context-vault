@@ -2,6 +2,8 @@
 
 A Claude Code mod that shows your context window as Scrooge McDuck's Money Bin. Coins fill the bin as the context fills. At 80% (or the percentage you set), Scrooge steps onto his diving board, dives in head first and swims through the coins until you `/compact` or `/clear`.
 
+![Coins fill the vault as the context window fills; at 80% Scrooge dives in and swims](assets/scrooge-dive.gif)
+
 - **Terminal:** a pixel-art pane drawn in quadrant block characters.
 - **Desktop app, VS Code and mobile:** the same scene as an animated SVG.
 

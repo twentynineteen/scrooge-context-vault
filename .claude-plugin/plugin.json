@@ -1,6 +1,6 @@
 {
   "name": "scrooge-context-vault",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Context window monitor drawn as Scrooge McDuck's Money Bin: coins fill the vault as context fills, and at a set percentage (80% by default) Scrooge dives in for a swim",
   "types": "./types/index.d.ts",
   "userConfig": {
